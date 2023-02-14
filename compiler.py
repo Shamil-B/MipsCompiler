@@ -11,7 +11,7 @@ class Compiler():
         lines = []
 
         # Open a file in read mode
-        with open('cppToCompile.txt', 'r') as inputFile:
+        with open('cppToCompile.cpp', 'r') as inputFile:
             # Iterate over each line in the inputFile
             for line in inputFile:
                 # Process the line (e.g. print it)
