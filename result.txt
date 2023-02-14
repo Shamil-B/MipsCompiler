@@ -1,0 +1,26 @@
+.text 
+	li $v0,4
+	la $a0 var0
+	syscall
+
+	li $v0,4
+	la $a0 var1
+	syscall
+
+	li $v0,4
+	la $a0 var2
+	syscall
+
+	li $v0,4
+	la $a0 var3
+	syscall
+
+.data 
+	var0: .asciiz "9"
+
+	var1: .asciiz ""hello""
+
+	var2: .asciiz ""hello there""
+
+	var3: .asciiz ""it fucking works mannn!""
+

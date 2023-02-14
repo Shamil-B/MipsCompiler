@@ -9,10 +9,11 @@ class Compiler():
         totalMipsCode = []
         totalMipsData = []
         lines = []
+
         # Open a file in read mode
-        with open('cppToCompile.txt', 'r') as file:
-            # Iterate over each line in the file
-            for line in file:
+        with open('cppToCompile.txt', 'r') as inputFile:
+            # Iterate over each line in the inputFile
+            for line in inputFile:
                 # Process the line (e.g. print it)
                 lines.append(line.strip())
 
@@ -43,30 +44,24 @@ class Compiler():
 def main():
     compiler = Compiler()
     if compiler.syntaxCorrect():
+        code,data = compiler.compile()
 
         # Open a file in write mode
-        with open('filename.txt', 'w') as file:
-            # Write each line to the file
-            file.write("Line 1\n")
-            file.write("Line 2\n")
-            file.write("Line 3\n")
+        with open('result.txt', 'w') as result:
+            # Write each line to the result
+            result.write(".text \n")
+            for lines in code:
+                for line in lines:
+                    result.write("\t"+line+"\n")
+                result.write("\n")
 
-
-        code,data = compiler.compile()
-        print(".text")
-        for lines in code:
-            for line in lines:
-                print("\t",line)
-            print()
-
-        print(".data")
-        for lines in data:
-            for line in lines:
-                print("\t",line)
-
-            print()
+            result.write(".data \n")
+            for lines in data:
+                for line in lines:
+                    result.write("\t"+line+"\n")
+                result.write("\n")
 
     else:
-        print("Error")
+        print("Syntax Error")
 
 main()
