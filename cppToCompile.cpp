@@ -1,7 +1,7 @@
 #include <iostream>
 using namespace std;
 
-cout << 9;
-cout << "hello";
-cout << "hello there";
-cout << "it fucking works mannn!";
+int op1 = 190;
+int op2 = 2;
+int c = 2 + op2;
+cout << c;
