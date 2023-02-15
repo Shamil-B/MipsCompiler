@@ -1,14 +1,32 @@
 .text 
-	lw $t1,2
-	addi $s0,$t1,op2
-
-	li $v0,1
-	move $a0,$s0
+	li $v0,8
+	la $a0,x
+	li $a1, 256
 	syscall
 
-.data 
-	op1: .word 190
+	li $v0,4
+	la $a0,x
+	syscall
 
-	op2: .word 2
+	li $v0,5
+	syscall
+	sw $v0,b
+
+	li $v0,1
+	lw $a0,b
+	syscall
+
+	
+
+	
+
+	
+
+.data 
+	b: .word 0
+
+	x: .space 256
+
+
 
 

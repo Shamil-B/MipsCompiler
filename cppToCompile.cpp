@@ -1,7 +1,12 @@
 #include <iostream>
 using namespace std;
 
-int op1 = 190;
-int op2 = 2;
-int c = 2 + op2;
-cout << c;
+string x;
+int b;
+cin >> x;
+cout << x;
+cin >> b;
+cout << b;
+// cout << "Type a number: ";       // Type a number and press enter
+// cin >> x;                        // Get user input from the keyboard
+// cout << "Your number is: " << x; // Display the input value

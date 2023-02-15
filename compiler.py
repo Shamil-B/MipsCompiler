@@ -4,10 +4,14 @@ class Compiler():
         self.intVars = []
         self.floatVars = []
         self.strVars = []
-        self.savedVars = {}
-        self.savedRegs = ["$s0","$s1","$s2","$s3","$s4","$s5","$s6","$s7"]
-        self.savedIndex = 0
+        self.divOrMod = {"/":"mflo","%":"mfhi","*":"mflo"}
         self.addOrSub = {"+":"add","-":"sub"}
+        self.multOrDiv = {"*":"mult","/":"div","%":"div"}
+        self.temps = ["$t0","$t1","$t2","$t3","$t4","$t5","$t6","$t7"]
+        self.tempsInd = 0
+        self.bufferCounter = 0
+        self.totalMipsData = []
+        self.totalMipsCode = []
 
     #at the begining of compilation this function checks 
     # for any syntax error in the entire c++ code
@@ -16,8 +20,6 @@ class Compiler():
     
     #our main compiler and operation assigner to each handlers
     def compile(self):
-        totalMipsCode = []
-        totalMipsData = []
         self.lines = []
 
         # Open a file in read mode
@@ -34,39 +36,113 @@ class Compiler():
         for line in self.lines:
             if line.startswith("cout"):
                 code,data = self.handlePrint(line)
-                totalMipsCode.append(code)
-                totalMipsData.append(data)
+                self.totalMipsCode.append(code)
+                self.totalMipsData.append(data)
 
+            elif line.startswith("cin"):
+                code, data = self.handleInput(line)
+                self.totalMipsCode.append(code)
+                self.totalMipsData.append(data)
             #we only handle comments that start at line start
             elif line.startswith("//"):
                 code = self.handleComments(line)
-                totalMipsCode.append([code])
+                self.totalMipsCode.append([code])
 
             #we store integers and floats in temporary registers and strings 
             #in a memory location
             elif line.startswith("int"):
-                if "=" in line:
-                    if "+" in line or "-" in line:
-                        code = self.handleAddorSub(line)
-                        totalMipsCode.append(code)
+                if "+" in line or "-" in line:
+                    code, data = self.handleAddorSub(line)
+                    self.totalMipsCode.append(code)
+                    self.totalMipsData.append(data)
 
-                    else:
-                        data = self.handleIntVar(line)
-                        totalMipsData.append(data)
+                elif "*" in line or "/" in line or "%" in line:
+                    code,data = self.handleMultOrDiv(line)
+                    self.totalMipsCode.append(code)
+                    self.totalMipsData.append(data)
+
+                else:
+                    data = self.handleIntVar(line)
+                    self.totalMipsData.append(data)
+
 
             elif line.startswith("string"):
                 data = self.handleStrVar(line)
-                totalMipsData.append(data)
+                self.totalMipsData.append(data)
 
             elif line.startswith("float") or line.startswith("double"):
                 data = self.handleFloatVar(line)
-                totalMipsData.append(data)
+                self.totalMipsData.append(data)
 
 
             elif line == "":
                 pass
             
-        return totalMipsCode,totalMipsData
+            else:
+                if "=" in line:
+                    items = line.split()
+                    if items[0] in self.intVars:
+                        line = "int " + line
+                        if "+" in line or "-" in line:
+                            code, data = self.handleAddorSub(line)
+                            self.totalMipsCode.append(code)
+                            self.totalMipsData.append(data)
+
+                            dataStr = data[0]
+                            dataSplitted = dataStr.split()
+                            dataSplitted[-1] = "0"
+                            dataStr = " ".join(dataSplitted)
+                            self.totalMipsData.remove([dataStr])
+                            
+
+                        elif "*" in line or "/" in line or "%" in line:
+                            code,data = self.handleMultOrDiv(line)
+                            self.totalMipsCode.append(code)
+                            self.totalMipsData.append(data)
+
+
+                            dataStr = data[0]
+                            dataSplitted = dataStr.split()
+                            dataSplitted[-1] = "0"
+                            dataStr = " ".join(dataSplitted)
+                            self.totalMipsData.remove([dataStr])
+                            
+
+                        else:
+                            data = self.handleIntVar(line)
+                            self.totalMipsData.append(data)
+
+
+                            dataStr = data[0]
+                            dataSplitted = dataStr.split()
+                            dataSplitted[-1] = "0"
+                            dataStr = " ".join(dataSplitted)
+                            self.totalMipsData.remove([dataStr])
+                            
+
+                    elif items[0] in self.strVars:
+                        line = "string " + line
+                        data = self.handleStrVar(line)
+                        self.totalMipsData.append(data)
+
+                        dataStr = data[0]
+                        dataSplitted = dataStr.split()
+                        dataSplitted[-1] = ""
+                        dataStr = " ".join(dataSplitted)
+                        self.totalMipsData.remove([dataStr])
+
+                    elif items[0] in self.floatVars:
+                        line = "float " + line 
+                        data = self.handleFloatVar(line)
+                        self.totalMipsData.append(data)
+
+                        dataStr = data[0]
+                        dataSplitted = dataStr.split()
+                        dataSplitted[-1] = "0.0"
+                        dataStr = " ".join(dataSplitted)
+                        self.totalMipsData.remove([dataStr])
+                        
+        return self.totalMipsCode,self.totalMipsData
     
     #this brave handler here is called whenever a cout(print) operation is needed 
     #and strong young man here handles it like a pro and returns only the result 
@@ -74,7 +150,8 @@ class Compiler():
     def handlePrint(self,line):
         printableWord = line[8:-1] 
         variablName = "var"+str(self.varCount)
-        
+        self.varCount += 1
+
         #we have to differentiate the data type here
         
         if printableWord.startswith('"'):
@@ -90,8 +167,7 @@ class Compiler():
             else:
                 if printableWord in self.intVars:
                     mipsCode = ["li $v0,1","lw $a0,"+printableWord,"syscall"]
-                    mipsData = []
-                    
+                    mipsData = []                    
 
                 elif printableWord in self.strVars:
                     mipsCode = ["li $v0,4","la $a0,"+printableWord,"syscall"]
@@ -101,24 +177,58 @@ class Compiler():
                     mipsCode = ["li $v0,2","lwc1 $f12,"+printableWord,"syscall"]
                     mipsData = []
 
-                elif printableWord in self.savedVars:
-                    register = self.savedVars[printableWord]
-                    mipsCode = ["li $v0,1",f"move $a0,{register}","syscall"]
-
-        self.varCount += 1
-
         return mipsCode,mipsData
+    
+    def handleInput(self,line):
+        code = []
+        data = []
+        items = line.split()
+        varName = items[-1]
+        if varName[-1] == ";":
+            varName = varName[:-1]
+
+        if varName in  self.intVars:
+            #the input is integer
+            code.append("li $v0,5")
+            code.append("syscall")
+            code.append(f"sw $v0,{varName}")
+
+        elif varName in  self.strVars:
+            #the input is integer
+            tmp = varName+": .asciiz "
+            self.totalMipsData.remove([tmp])
+            data.append(f"{varName}: .space 256")
+            code.append("li $v0,8")
+            code.append(f"la $a0,{varName}")
+            code.append("li $a1, 256")
+            code.append("syscall")
+
+
+        elif varName in  self.floatVars:
+            #the input is integer
+            code.append("li $f12,6")
+            code.append("syscall")
+            code.append(f"sf $f12,{varName}")
+
+        return code,data
     
     #we are gon handle comments
     def handleComments(self,line):
-        comment = "#" + line[2:]
-        return comment
+        return ""
     
     #we gon handle variable assignments starting from int
     def handleIntVar(self,line):
         items = line.split()
-        value = items[3][:-1]
-        varName = items[1]
+        if "=" not in line:
+            value = 0
+            varName = items[1]
+            
+        else:
+            value = items[3][:-1]
+            varName = items[1]
+
+        if varName[-1] == ";":
+                        varName = varName[:-1]
         data = []
 
         #the following line maps the varible name to the register storing the number
@@ -127,11 +237,20 @@ class Compiler():
         #now we store the number
         data.append(f"{varName}: .word {value}")
         return data
-    
+
     def handleFloatVar(self,line):
         items = line.split()
-        value = items[3][:-1]
-        varName = items[1]
+        if "=" not in line:
+            value = 0.0
+            varName = items[1]
+
+        else:
+            value = items[3][:-1]
+            varName = items[1]
+
+        if varName[-1] == ";":
+            varName = varName[:-1]
+
         data = []
 
         #the following line maps the varible name to the value
@@ -143,8 +262,18 @@ class Compiler():
     
     def handleStrVar(self,line):
         items = line.split()
-        value = items[3][:-1]
-        varName = items[1]
+
+        if "=" not in line:
+            value = ""
+            varName = items[1]
+            
+        else:
+            value = items[3][:-1]
+            varName = items[1]
+
+        if varName[-1] == ";":
+            varName = varName[:-1]
+
         data = []
 
         #the following line maps the varible name to the value
@@ -163,6 +292,8 @@ class Compiler():
         operand_2 = items[5]
         operation = self.addOrSub[operand]
         code = []
+        data = []
+
         if operand_2[-1]==";":
             operand_2 = operand_2[:-1]
 
@@ -176,34 +307,98 @@ class Compiler():
 
 
             elif (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
-                currentFreeRegister = self.savedRegs[self.savedIndex]
-                self.savedVars[resHolder] = currentFreeRegister
  
                 code.append(f"addi $t0, $zero, {operand_1}")    # load the immediate value 5 into register $t0
                 code.append(f"addi $t1, $zero, {operand_2}")    # load the immediate value 7 into register $t1
-                code.append(f"{operation[:-1]} {currentFreeRegister}, $t0, $t1")     # add the contents of $t0 and $t1 and store the result in $t2
-                self.savedIndex += 1    
+                code.append(f"{operation[:-1]} $t2, $t0, $t1")     # add the contents of $t0 and $t1 and store the result in $t2
+                code.append(f"sw $t2,{resHolder}")
+                self.intVars.append(resHolder)
+                data.append(f"{resHolder}: .word 0")
 
-                return code
+                return code,data
         
-        currentFreeRegister = self.savedRegs[self.savedIndex]
-        self.savedVars[resHolder] = currentFreeRegister
-        code.append(f"lw $t1,{operand_1}")
-        t2 = "$t2"
+        code.append(f"lw $t0,{operand_1}")
 
         if operation[-1] == "i":
-            t2 = operand_2
+            code.append(f"li $t1,{operand_2}")
+            operation = operation[:-1]
 
         else:
-            code.append(f"lw $t2,{operand_2}")
+            code.append(f"lw $t1,{operand_2}")
 
-        code.append(f'{operation} {currentFreeRegister},$t1,{t2}')
-        self.savedIndex += 1    
+        code.append(f"{operation} $t2,$t0,$t1")
+        code.append(f"sw $t2,{resHolder}")
+        self.intVars.append(resHolder)
+        data.append(f"{resHolder}: .word 0")
 
-        return code
+        return code,data
+    
+
+    #we gon handle multiplication now
+    
+    def handleMultOrDiv(self,line):
+        items = line.split()
+        productHolder = items[1]
+        operator = items[4]
+        operand_1 = items[3]
+        operand_2 = items[5]
+        code = []
+        data = []
         
+        if operand_1[-1] == ";":
+            operand_1 = operand_1[:-1]
+
+        if operand_2[-1] == ";":
+            operand_2 = operand_2[:-1]
 
 
+        #handling multiplication of two immediates
+        if (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
+
+            code.append(f"li $t0,{operand_1}")
+            code.append(f"li $t1,{operand_2}")
+            code.append(f"{self.multOrDiv[operator]} $t0,$t1")
+            code.append(f"{self.divOrMod[operator]} $t2")
+            self.intVars.append(productHolder)
+            code.append(f"sw $t2, {productHolder}")
+            data.append(f"{productHolder}: .word 0")
+
+            return code,data
+        
+        elif (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and not (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
+            code.append(f"li $t0,{operand_1}")
+            code.append(f"lw $t1,{operand_2}")
+            code.append(f"{self.multOrDiv[operator]} $t0,$t1")
+            code.append(f"{self.divOrMod[operator]} $t2")
+            self.intVars.append(productHolder)
+            code.append(f"sw $t2, {productHolder}")
+            data.append(f"{productHolder}: .word 0")
+
+            return code,data
+        
+        elif not (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
+
+            code.append(f"lw $t0,{operand_1}")
+            code.append(f"li $t1,{operand_2}")
+            code.append(f"{self.multOrDiv[operator]} $t0,$t1")
+            code.append(f"{self.divOrMod[operator]} $t2")
+            self.intVars.append(productHolder)
+            code.append(f"sw $t2, {productHolder}")
+            data.append(f"{productHolder}: .word 0")
+
+            return code,data
+        
+        elif not (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and not (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
+
+            code.append(f"lw $t0,{operand_1}")
+            code.append(f"lw $t1,{operand_2}")
+            code.append(f"{self.multOrDiv[operator]} $t0,$t1")
+            code.append(f"{self.divOrMod[operator]} $t2")
+            self.intVars.append(productHolder)
+            code.append(f"sw $t2, {productHolder}")
+            data.append(f"{productHolder}: .word 0")
+
+            return code,data
 
 
 #this is not going to be changed from now on
