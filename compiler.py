@@ -7,11 +7,12 @@ class Compiler():
         self.divOrMod = {"/":"mflo","%":"mfhi","*":"mflo"}
         self.addOrSub = {"+":"add","-":"sub"}
         self.multOrDiv = {"*":"mult","/":"div","%":"div"}
-        self.temps = ["$t0","$t1","$t2","$t3","$t4","$t5","$t6","$t7"]
-        self.tempsInd = 0
+        self.conditions = {"==":"bne","!=":"beq",">":"ble","<":"bge",">=":"blt","<=":"bgt"}
         self.bufferCounter = 0
         self.totalMipsData = []
         self.totalMipsCode = []
+        self.loopCounter = 1
+        self.blockCounter = 1
 
     #at the begining of compilation this function checks 
     # for any syntax error in the entire c++ code
@@ -19,37 +20,210 @@ class Compiler():
         return True
     
     #our main compiler and operation assigner to each handlers
-    def compile(self):
-        self.lines = []
+    def compile(self,custom=False,lines=[]):
+        
+        if not custom:
+            self.lines = []
+            # Open a file in read mode
+            with open('cppToCompile.cpp', 'r') as inputFile:
+                # Iterate over each line in the inputFile
+                for line in inputFile:
+                    # Process the line (e.g. print it)
+                    self.lines.append(line.strip())
 
-        # Open a file in read mode
-        with open('cppToCompile.cpp', 'r') as inputFile:
-            # Iterate over each line in the inputFile
-            for line in inputFile:
-                # Process the line (e.g. print it)
-                self.lines.append(line.strip())
+            self.lines.pop(0)
+            self.lines.pop(0)
+            self.totalMipsData.append(['newLine: .asciiz "\\n"'])
 
-        self.lines.pop(0)
-        self.lines.pop(0)
+        else:
+            
+            self.lines = lines
+
+        
 
         #now we can do anything we want
-        for line in self.lines:
+        index = 0
+        while index < len(self.lines):
+            line = self.lines[index]
+
             if line.startswith("cout"):
                 code,data = self.handlePrint(line)
                 self.totalMipsCode.append(code)
+                self.totalMipsCode.append(["li $v0,4",'la $a0,newLine',"syscall"])
                 self.totalMipsData.append(data)
 
             elif line.startswith("cin"):
                 code, data = self.handleInput(line)
                 self.totalMipsCode.append(code)
                 self.totalMipsData.append(data)
+
+            elif line.startswith("for"):
+                #we gon handle the loop here
+                tmpIndex = index
+                stack = None
+                while tmpIndex < len(self.lines):
+
+                    tmpLine = self.lines[tmpIndex]
+                    for ch in tmpLine:
+                        if ch == "{":
+                            if not stack:
+                                stack = 1
+
+                            else:
+                                stack += 1
+                        
+                        if ch == "}":
+                            stack -= 1
+
+                    if stack == 0:
+                        lineEnd = tmpIndex
+                        break
+                    tmpIndex += 1
+
+                
+                tmpIndex = index
+                code = []
+                data = []
+
+                currentLoop = "loop" + str(self.loopCounter)
+                self.loopCounter += 1
+
+                currentBlock = "block" + str(self.blockCounter)
+                self.blockCounter += 1
+
+                #statement 1
+                tmpLine = self.lines[tmpIndex]
+                start,end = tmpLine.index("("), tmpLine.index(";")
+                tmpIndex += 2
+                startOfBlock = tmpIndex
+ 
+                stat_1 = tmpLine[start+1:end+1]
+                dataa = self.handleIntVar(stat_1)
+
+                data += dataa
+                varName = stat_1.split()[1]
+                code.append(f"lw $t0,{varName}")
+                code.append(f"{currentLoop}:")
+
+                #lets handle statement 2 or the condition
+                if "==" in tmpLine:
+                    operator = self.conditions["=="]
+
+                    terminatorValue = tmpLine[tmpLine.index("==")+2:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+                elif "!=" in tmpLine:
+                    operator = self.conditions["!="]
+
+                    terminatorValue = tmpLine[tmpLine.index("!")+2:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+                elif ">=" in tmpLine:
+                    operator = self.conditions[">="]
+
+                    terminatorValue = tmpLine[tmpLine.index(">")+2:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+
+                elif "<=" in tmpLine:
+                    operator = self.conditions["<="]
+
+                    terminatorValue = tmpLine[tmpLine.index("<=")+2:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+
+                elif "<" in tmpLine:
+                    operator = self.conditions["<"]
+
+                    terminatorValue = tmpLine[tmpLine.index("<")+1:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+
+                elif ">" in tmpLine:
+                    operator = self.conditions[">"]
+
+                    terminatorValue = tmpLine[tmpLine.index(">")+1:]
+                    if terminatorValue[0] == " ":
+                        terminatorValue = terminatorValue[1:]
+                    
+                    terminatorValue = terminatorValue[:terminatorValue.index(";")]
+
+
+                code.append(f"{operator} $t0,{terminatorValue},exit")
+
+                code.append(f"jal {currentBlock}")
+                #at the end operations
+                #we gon handle statement 3
+                if "++" in tmpLine:
+                    code.append("addi $t0,$t0,1")
+
+                elif "+" in tmpLine:
+                    indS = tmpLine.index("+")
+                    indE = tmpLine.index(")")
+                    incVal = tmpLine[indS+1:indE]
+                    if "=" in incVal:
+                        incVal = incVal[1:]
+
+                    if incVal[0] == " ":
+                        incVal = incVal[1:]
+
+                    if incVal[-1] == " ":
+                        incVal = incVal[:-1]
+
+                    code.append(f"addi $t0,$t0,{incVal}")    
+
+                elif "--" in tmpLine:
+                    code.append("subi $t0,$t0,1")
+
+                elif "-" in tmpLine:
+                    indS = tmpLine.index("-")
+                    indE = tmpLine.index(")")
+                    incVal = tmpLine[indS+1:indE]
+                    if "=" in incVal:
+                        incVal = incVal[1:]
+
+                    if incVal[0] == " ":
+                        incVal = incVal[1:]
+
+                    if incVal[-1] == " ":
+                        incVal = incVal[:-1]
+
+                    code.append(f"subi $t0,$t0,{incVal}")                        
+
+                code.append(f"sw $t0,{varName}")
+                code.append(f"j {currentLoop}")
+
+                #handle the block here
+                code.append("")
+                endOfBlock = lineEnd-1
+                self.totalMipsCode.append(code)
+                self.totalMipsData.append(data)
+                self.handleBlock(startOfBlock,endOfBlock,currentBlock) #inclusive for both sides
+
+                
+                index = lineEnd
+
             #we only handle comments that start at line start
             elif line.startswith("//"):
                 code = self.handleComments(line)
                 self.totalMipsCode.append([code])
 
-            #we store integers and floats in temporary registers and strings 
-            #in a memory location
+
             elif line.startswith("int"):
                 if "+" in line or "-" in line:
                     code, data = self.handleAddorSub(line)
@@ -141,7 +315,14 @@ class Compiler():
                         dataSplitted[-1] = "0.0"
                         dataStr = " ".join(dataSplitted)
                         self.totalMipsData.remove([dataStr])
+                
+            index += 1
                         
+        if not custom:
+            #implementing an exit function for general case
+            self.totalMipsCode.append(["exit:"])
+            self.totalMipsCode.append(["li $v0,10"])
+            self.totalMipsCode.append(["syscall"])
         return self.totalMipsCode,self.totalMipsData
     
     #this brave handler here is called whenever a cout(print) operation is needed 
@@ -184,6 +365,7 @@ class Compiler():
         data = []
         items = line.split()
         varName = items[-1]
+
         if varName[-1] == ";":
             varName = varName[:-1]
 
@@ -194,7 +376,7 @@ class Compiler():
             code.append(f"sw $v0,{varName}")
 
         elif varName in  self.strVars:
-            #the input is integer
+            #the input is string
             tmp = varName+": .asciiz "
             self.totalMipsData.remove([tmp])
             data.append(f"{varName}: .space 256")
@@ -205,10 +387,10 @@ class Compiler():
 
 
         elif varName in  self.floatVars:
-            #the input is integer
-            code.append("li $f12,6")
+            #the input is float
+            code.append("li $v0,6")
             code.append("syscall")
-            code.append(f"sf $f12,{varName}")
+            code.append(f"swc1 $f0,{varName}")
 
         return code,data
     
@@ -228,7 +410,7 @@ class Compiler():
             varName = items[1]
 
         if varName[-1] == ";":
-                        varName = varName[:-1]
+            varName = varName[:-1]
         data = []
 
         #the following line maps the varible name to the register storing the number
@@ -264,7 +446,6 @@ class Compiler():
         items = line.split()
 
         if "=" not in line:
-            value = ""
             varName = items[1]
             
         else:
@@ -399,6 +580,23 @@ class Compiler():
             data.append(f"{productHolder}: .word 0")
 
             return code,data
+        
+
+
+    def handleBlock(self,start,end,currentBlock):
+        lines = []
+
+        originalLines = self.lines
+        blockDeclaration = currentBlock + ":"
+
+        for i in range(start,end+1):
+            lines.append(originalLines[i])
+
+        self.totalMipsCode.append([blockDeclaration])
+        self.compile(True,lines)
+        self.totalMipsCode.append(["jr $ra"])
+
+        self.lines = originalLines
 
 
 #this is not going to be changed from now on
