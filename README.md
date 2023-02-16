@@ -26,6 +26,7 @@ Getting Started
 To get started using the C++ to MIPS Compiler, simply download the repository and run the "compiler.py" file. This will open the GUI and allow you to start editing and compiling your C++ code.
 
 ###
+
 Contributors
 Shamil Bedru - Creator and maintainer of the C++ to MIPS Compiler
 
