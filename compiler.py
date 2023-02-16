@@ -1,5 +1,8 @@
+import re
+
 class Compiler():
-    def __init__(self) -> None:
+    def __init__(self,file) -> None:
+        self.fileToCompile = file
         self.varCount = 0
         self.intVars = []
         self.floatVars = []
@@ -17,7 +20,7 @@ class Compiler():
     #at the begining of compilation this function checks 
     # for any syntax error in the entire c++ code
     def syntaxCorrect(self):
-        return True
+        return True    
     
     #our main compiler and operation assigner to each handlers
     def compile(self,custom=False,lines=[]):
@@ -25,21 +28,17 @@ class Compiler():
         if not custom:
             self.lines = []
             # Open a file in read mode
-            with open('cppToCompile.cpp', 'r') as inputFile:
+            with open(self.fileToCompile, 'r') as inputFile:
                 # Iterate over each line in the inputFile
                 for line in inputFile:
                     # Process the line (e.g. print it)
                     self.lines.append(line.strip())
 
-            self.lines.pop(0)
-            self.lines.pop(0)
             self.totalMipsData.append(['newLine: .asciiz "\\n"'])
 
         else:
             
             self.lines = lines
-
-        
 
         #now we can do anything we want
         index = 0
@@ -47,18 +46,31 @@ class Compiler():
             line = self.lines[index]
 
             if line.startswith("cout"):
+                result,msg =  self.checkSemicolon(line,1)
+                if result == False:
+                    return False, msg
+                
                 code,data = self.handlePrint(line)
                 self.totalMipsCode.append(code)
                 self.totalMipsCode.append(["li $v0,4",'la $a0,newLine',"syscall"])
                 self.totalMipsData.append(data)
 
             elif line.startswith("cin"):
+                result,msg =  self.checkSemicolon(line,1)
+                if result == False:
+                    return False, msg
+                
                 code, data = self.handleInput(line)
                 self.totalMipsCode.append(code)
                 self.totalMipsData.append(data)
 
             elif line.startswith("for"):
                 #we gon handle the loop here
+                result,msg =  self.checkSemicolon(line,2)
+
+                if result == False:
+                    return False, msg
+
                 tmpIndex = index
                 stack = None
                 while tmpIndex < len(self.lines):
@@ -225,6 +237,10 @@ class Compiler():
 
 
             elif line.startswith("int"):
+                result,msg =  self.checkSemicolon(line,1)
+                if result == False:
+                    return False, msg
+                
                 if "+" in line or "-" in line:
                     code, data = self.handleAddorSub(line)
                     self.totalMipsCode.append(code)
@@ -241,6 +257,10 @@ class Compiler():
 
 
             elif line.startswith("string"):
+                result,msg =  self.checkSemicolon(line,1)
+                if result == False:
+                    return False, msg
+                
                 data = self.handleStrVar(line)
                 self.totalMipsData.append(data)
 
@@ -249,11 +269,15 @@ class Compiler():
                 self.totalMipsData.append(data)
 
 
-            elif line == "":
+            elif line == "" or line.startswith("namespace") or line.startswith("include"):
                 pass
-            
+                            
             else:
                 if "=" in line:
+                    result,msg =  self.checkSemicolon(line,1)
+                    if result == False:
+                        return False, msg
+                    
                     items = line.split()
                     if items[0] in self.intVars:
                         line = "int " + line
@@ -315,6 +339,13 @@ class Compiler():
                         dataSplitted[-1] = "0.0"
                         dataStr = " ".join(dataSplitted)
                         self.totalMipsData.remove([dataStr])
+
+                else:
+                    if line in self.lines:
+                        return False,"Syntax error on line " + str(self.lines.index(line)+1)
+
+                    else:
+                        return False, "Syntax error"
                 
             index += 1
                         
@@ -324,6 +355,19 @@ class Compiler():
             self.totalMipsCode.append(["li $v0,10"])
             self.totalMipsCode.append(["syscall"])
         return self.totalMipsCode,self.totalMipsData
+    
+    #we gon define a function that checks for simicolons
+    def checkSemicolon(self,line,numOfSemicolons):
+        semiColonCount = line.count(';')
+
+        if semiColonCount < numOfSemicolons and line in self.lines:
+            return False, "Missing semicolon on line " + str(self.lines.index(line)+1)
+        
+        elif semiColonCount > numOfSemicolons and line in self.lines:
+            return False, "Extra semicolon on line " + str(self.lines.index(line)+1)
+        
+        return True,""
+          
     
     #this brave handler here is called whenever a cout(print) operation is needed 
     #and strong young man here handles it like a pro and returns only the result 
@@ -484,7 +528,7 @@ class Compiler():
 
             if (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and not (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
                 print("wrong order of operands literal value preceded variable")
-                print(f"error on line {self.lines.index(line)+3}")
+                print(f"error on line {self.lines.index(line)+1}")
 
 
             elif (ord(operand_1[0]) > 47 and ord(operand_1[0]) <58) and (ord(operand_2[0]) > 47 and ord(operand_2[0]) <58):
@@ -599,17 +643,32 @@ class Compiler():
         self.lines = originalLines
 
 
+
+
+
+
 #this is not going to be changed from now on
 #all we are gon go from now on is adding all the other 
 #operation handlers and call them wherever they are needed
 
-def main():
-    compiler = Compiler()
-    if compiler.syntaxCorrect():
-        code,data = compiler.compile()
+def main(inputFile,outputFile):
+    compiler = Compiler(inputFile)
+    res = compiler.syntaxCorrect()
 
+    if res == True:
+        try:
+            code,data = compiler.compile()
+
+        except:
+            code = False
+            data = "There was an error while compiling"
+
+        if code == False:
+            print(data)
+            return
+        
         # Open a file in write mode
-        with open('result.txt', 'w') as result:
+        with open(outputFile, 'w') as result:
             # Write each line to the result
             result.write(".text \n")
             for lines in code:
@@ -624,6 +683,101 @@ def main():
                 result.write("\n")
 
     else:
-        print("Syntax Error")
+        print(res)
 
-main()
+
+################################# here comes the GUI ########################################################
+
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+
+class Application(tk.Frame):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self.master = master
+        self.master.title("Compiler")
+        self.pack(expand=True, fill='both')
+        self.create_widgets()
+        self.editor.insert(tk.END, "// Here goes your c++ code...")
+        self.output.insert(tk.END, "### Here goes the Mips Assembly\n")
+
+
+    def create_widgets(self):
+        # Text Editor with line numbers
+        editor_frame = tk.Frame(self)
+        editor_frame.pack(side='left', expand=True, fill='both')
+
+        self.editor = tk.Text(editor_frame, width=80, height=25, bg='black', fg='white',
+                              insertbackground='white', selectbackground='gray', selectforeground='white',
+                              font=("Consolas", 12))
+        self.editor.pack(side='left', expand=True, fill='both')
+        self.editor.tag_configure("line", background="black", foreground='gray')
+        self.editor.bind("<Key>", self.update_line_numbers)
+        self.scrollbar = tk.Scrollbar(editor_frame, command=self.editor.yview)
+        self.scrollbar.pack(side='right', fill='y')
+        self.editor.config(yscrollcommand=self.scrollbar.set)
+        self.linenumbers = tk.Text(editor_frame, width=4, height=25, bg="black", fg="gray", font=("Consolas", 12))
+        self.linenumbers.pack(side='left', fill='y')
+        self.linenumbers.insert('end', '1\n', 'line')
+        self.linenumbers.config(state='disabled')
+
+        # Buttons
+        button_frame = tk.Frame(self, bg='black')
+        button_frame.pack(side='top', anchor='ne')
+
+        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_editor, bg='red', fg='white')
+        self.clear_button.pack(side='right', padx=5, pady=5)
+
+        self.run_button = tk.Button(button_frame, text="Run", command=self.run_compiler, bg='blue', fg='white')
+        self.run_button.pack(side='right', padx=5, pady=5)
+
+        # Output area
+        self.output = tk.Text(self, width=80, height=20, bg='black', fg='white', insertbackground='white',
+                              font=("Consolas", 12))
+        self.output.pack(side='bottom', fill='x')
+
+        # Set the remaining space to be black
+        self.config(bg='black')
+
+    def update_line_numbers(self, event):
+        self.linenumbers.config(state='normal')
+        self.linenumbers.delete(1.0, tk.END)
+        text = self.editor.get(1.0, tk.END)
+        lines = text.count("\n")
+        for i in range(1, lines+1):
+            self.linenumbers.insert(tk.END, f"{i}\n", "line")
+        self.linenumbers.config(state='disabled')
+
+    def run_compiler(self):
+        #first we load the contents of the editor to an input file
+        with open("input.txt", "w") as f:
+            f.write(self.editor.get("1.0", "end"))
+            
+        # TODO: Implement your compiler logic here
+        self.output.delete(1.0, tk.END)
+        
+        #then we do the compiling
+        main('input.txt','output.txt')
+
+        #and finally we out put the mips code 
+        with open('output.txt', 'r') as result:
+            for line in result:
+                self.output.insert(tk.END, line)
+
+        
+
+    def clear_editor(self):
+        self.editor.delete(1.0, tk.END)
+        self.output.delete(1.0, tk.END)
+        self.linenumbers.config(state='normal')
+        self.linenumbers.delete(1.0, tk.END)
+        self.linenumbers.insert('end', '1\n', 'line')
+        self.linenumbers.config(state='disabled')
+
+
+root = tk.Tk()
+root.configure(bg='black')
+app = Application(master=root)
+app.mainloop()
+
