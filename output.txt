@@ -1,11 +1,9 @@
 .text 
+	j main
+
+	main:
+
 	
-
-	exit:
-
-	li $v0,10
-
-	syscall
 
 .data 
 	newLine: .asciiz "\n"

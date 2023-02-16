@@ -13,9 +13,31 @@ class Compiler():
         self.conditions = {"==":"bne","!=":"beq",">":"ble","<":"bge",">=":"blt","<=":"bgt"}
         self.bufferCounter = 0
         self.totalMipsData = []
-        self.totalMipsCode = []
+        self.totalMipsCode = [["main:"]]
         self.loopCounter = 1
         self.blockCounter = 1
+        self.mainflow_num = 0
+
+        self.savedIndex = 0
+        self.savedRegs = ["$s0","$s1","$s2","$s3","$s4","$s5","$s6","$s7"]
+        self.bool_map = {
+    '&&':'and',
+    '||':'or',
+    '!':'not'
+    }
+
+        self.set_on_map = {
+        '<':'slt',
+        '>':'sgt',
+        '==':'seq', 
+        '!=':'sne',
+        '<=':'sle',
+        '>=':'sge',
+    }
+
+        self.branch_created =[]#flag to check occurence of if statements :::> [True,...] if branches made else [] #supports nesting
+        self.branches = {}#branches >>> label: body
+        self.branch_num = 0
 
     #at the begining of compilation this function checks 
     # for any syntax error in the entire c++ code
@@ -31,7 +53,7 @@ class Compiler():
             with open(self.fileToCompile, 'r') as inputFile:
                 # Iterate over each line in the inputFile
                 for line in inputFile:
-                    # Process the line (e.g. print it)
+                    # self.Process the line (e.g. print it)
                     self.lines.append(line.strip())
 
             self.totalMipsData.append(['newLine: .asciiz "\\n"'])
@@ -44,6 +66,12 @@ class Compiler():
         index = 0
         while index < len(self.lines):
             line = self.lines[index]
+            if self.branch_created and not line.startswith("else") and line != "" and not custom:
+                print("...",line,custom)
+                self.branch_created.pop()
+                mainflow = "mainflow" + str(self.mainflow_num) + ":"
+                self.mainflow_num += 1
+                self.totalMipsCode.append([mainflow])
 
             if line.startswith("cout"):
                 result,msg =  self.checkSemicolon(line,1)
@@ -51,6 +79,10 @@ class Compiler():
                     return False, msg
                 
                 code,data = self.handlePrint(line)
+                #if there is any error code is false and data contains error message
+                if code == False:
+                    return False,data
+                
                 self.totalMipsCode.append(code)
                 self.totalMipsCode.append(["li $v0,4",'la $a0,newLine',"syscall"])
                 self.totalMipsData.append(data)
@@ -61,6 +93,10 @@ class Compiler():
                     return False, msg
                 
                 code, data = self.handleInput(line)
+                #if there is any error code is false and data contains error message
+                if code == False:
+                    return False,data
+                
                 self.totalMipsCode.append(code)
                 self.totalMipsData.append(data)
 
@@ -110,7 +146,10 @@ class Compiler():
                 startOfBlock = tmpIndex
  
                 stat_1 = tmpLine[start+1:end+1]
-                dataa = self.handleIntVar(stat_1)
+                codee,dataa = self.handleIntVar(stat_1)
+                #if there is any error code is false and data contains error message
+                if codee == False:
+                    return False,dataa
 
                 data += dataa
                 varName = stat_1.split()[1]
@@ -175,8 +214,8 @@ class Compiler():
                     
                     terminatorValue = terminatorValue[:terminatorValue.index(";")]
 
-
-                code.append(f"{operator} $t0,{terminatorValue},exit")
+                currentLoopEnd = currentLoop+"end"
+                code.append(f"{operator} $t0,{terminatorValue},{currentLoopEnd}")
 
                 code.append(f"jal {currentBlock}")
                 #at the end operations
@@ -226,7 +265,7 @@ class Compiler():
                 self.totalMipsCode.append(code)
                 self.totalMipsData.append(data)
                 self.handleBlock(startOfBlock,endOfBlock,currentBlock) #inclusive for both sides
-
+                #here we specify a label for the loop to come to execute the rest of the code when its done with the loop
                 
                 index = lineEnd
 
@@ -235,6 +274,13 @@ class Compiler():
                 code = self.handleComments(line)
                 self.totalMipsCode.append([code])
 
+            elif line.startswith("if") or line.startswith("else"):
+                print("line",line)
+                currIndex, code,data = self.conditionHandler(line,index)
+                index = currIndex
+                self.totalMipsCode.append(code)
+                self.totalMipsData.append(data)
+                print(code,data)
 
             elif line.startswith("int"):
                 result,msg =  self.checkSemicolon(line,1)
@@ -243,16 +289,28 @@ class Compiler():
                 
                 if "+" in line or "-" in line:
                     code, data = self.handleAddorSub(line)
+                    #if there is any error code is false and data contains error message
+                    if code == False:
+                        return False,data
+                    
                     self.totalMipsCode.append(code)
                     self.totalMipsData.append(data)
 
                 elif "*" in line or "/" in line or "%" in line:
                     code,data = self.handleMultOrDiv(line)
+                    #if there is any error code is false and data contains error message
+                    if code == False:
+                        return False,data
+                    
                     self.totalMipsCode.append(code)
                     self.totalMipsData.append(data)
 
                 else:
-                    data = self.handleIntVar(line)
+                    code,data = self.handleIntVar(line)
+                    #if there is any error code is false and data contains error message
+                    if code == False:
+                        return False,data
+                    
                     self.totalMipsData.append(data)
 
 
@@ -261,11 +319,19 @@ class Compiler():
                 if result == False:
                     return False, msg
                 
-                data = self.handleStrVar(line)
+                code, data = self.handleStrVar(line)
+                #if there is any error code is false and data contains error message
+                if code == False:
+                    return False,data
+
                 self.totalMipsData.append(data)
 
             elif line.startswith("float") or line.startswith("double"):
-                data = self.handleFloatVar(line)
+                code, data = self.handleFloatVar(line)
+                #if there is any error code is false and data contains error message
+                if code == False:
+                    return False,data
+
                 self.totalMipsData.append(data)
 
 
@@ -283,6 +349,10 @@ class Compiler():
                         line = "int " + line
                         if "+" in line or "-" in line:
                             code, data = self.handleAddorSub(line)
+                            #if there is any error code is false and data contains error message
+                            if code == False:
+                                return False,data
+                            
                             self.totalMipsCode.append(code)
                             self.totalMipsData.append(data)
 
@@ -295,6 +365,10 @@ class Compiler():
 
                         elif "*" in line or "/" in line or "%" in line:
                             code,data = self.handleMultOrDiv(line)
+                            #if there is any error code is false and data contains error message
+                            if code == False:
+                                return False,data
+                            
                             self.totalMipsCode.append(code)
                             self.totalMipsData.append(data)
 
@@ -307,7 +381,11 @@ class Compiler():
                             
 
                         else:
-                            data = self.handleIntVar(line)
+                            code, data = self.handleIntVar(line)
+                            #if there is any error code is false and data contains error message
+                            if code == False:
+                                return False,data
+                            
                             self.totalMipsData.append(data)
 
 
@@ -320,7 +398,11 @@ class Compiler():
 
                     elif items[0] in self.strVars:
                         line = "string " + line
-                        data = self.handleStrVar(line)
+                        code, data = self.handleStrVar(line)
+                        #if there is any error code is false and data contains error message
+                        if code == False:
+                            return False,data
+                        
                         self.totalMipsData.append(data)
 
                         dataStr = data[0]
@@ -331,29 +413,47 @@ class Compiler():
 
                     elif items[0] in self.floatVars:
                         line = "float " + line 
-                        data = self.handleFloatVar(line)
+                        code,data = self.handleFloatVar(line)
+                        #if there is any error code is false and data contains error message
+                        if code == False:
+                            return False,data
+                        
                         self.totalMipsData.append(data)
 
                         dataStr = data[0]
-                        dataSplitted = dataStr.split()
                         dataSplitted[-1] = "0.0"
                         dataStr = " ".join(dataSplitted)
                         self.totalMipsData.remove([dataStr])
 
-                else:
-                    if line in self.lines:
-                        return False,"Syntax error on line " + str(self.lines.index(line)+1)
-
                     else:
-                        return False, "Syntax error"
-                
+                        return False, f"Unknown variable {items[0]} on line number {self.lines.index(line)}"
+
+                # else:
+                #     if line in self.lines:
+                #         return False,"Syntax error on line " + str(self.lines.index(line)+1)
+
+                #     else:
+                #         return False, "Syntax error"
+
             index += 1
-                        
+
         if not custom:
-            #implementing an exit function for general case
-            self.totalMipsCode.append(["exit:"])
-            self.totalMipsCode.append(["li $v0,10"])
-            self.totalMipsCode.append(["syscall"])
+            for key, val in self.branches.items():
+                st,en,name,mainflow = val
+
+                start_index = len(self.totalMipsCode)
+                self.handleBlock(st,en,name,True)
+                self.totalMipsCode.append([f"j {mainflow}"])
+                current_index = len(self.totalMipsCode)
+
+                branches = self.totalMipsCode[start_index:current_index]
+                self.totalMipsCode = branches + self.totalMipsCode[:start_index]
+
+            self.totalMipsCode = [["j main"]] + self.totalMipsCode
+
+                
+
+                
         return self.totalMipsCode,self.totalMipsData
     
     #we gon define a function that checks for simicolons
@@ -376,6 +476,9 @@ class Compiler():
         printableWord = line[8:-1] 
         variablName = "var"+str(self.varCount)
         self.varCount += 1
+
+        if printableWord == "":
+            return False,f"Syntax error on line {self.lines.index(line)}"
 
         #we have to differentiate the data type here
         
@@ -456,13 +559,14 @@ class Compiler():
         if varName[-1] == ";":
             varName = varName[:-1]
         data = []
+        code = []
 
         #the following line maps the varible name to the register storing the number
         self.intVars.append(varName)
 
         #now we store the number
         data.append(f"{varName}: .word {value}")
-        return data
+        return code, data
 
     def handleFloatVar(self,line):
         items = line.split()
@@ -478,18 +582,20 @@ class Compiler():
             varName = varName[:-1]
 
         data = []
+        code = []
 
         #the following line maps the varible name to the value
         self.floatVars.append(varName)
 
         #now we store the number
         data.append(f"{varName}: .float {value}")
-        return data
+        return code, data
     
     def handleStrVar(self,line):
         items = line.split()
 
         if "=" not in line:
+            value = ""
             varName = items[1]
             
         else:
@@ -500,13 +606,14 @@ class Compiler():
             varName = varName[:-1]
 
         data = []
+        code = []
 
         #the following line maps the varible name to the value
         self.strVars.append(varName)
 
         #now we store the number
         data.append(f"{varName}: .asciiz {value}")
-        return data
+        return code, data
     
     def handleAddorSub(self,line):
         items = line.split()
@@ -627,20 +734,219 @@ class Compiler():
         
 
 
-    def handleBlock(self,start,end,currentBlock):
+    def handleBlock(self,start,end,currentBlock,isCond=False,label=True):
         lines = []
 
         originalLines = self.lines
         blockDeclaration = currentBlock + ":"
 
+        print(start,end)
+        print(originalLines)
         for i in range(start,end+1):
             lines.append(originalLines[i])
 
-        self.totalMipsCode.append([blockDeclaration])
+        if label:
+            self.totalMipsCode.append([blockDeclaration])
+
         self.compile(True,lines)
-        self.totalMipsCode.append(["jr $ra"])
+
+        if not isCond:
+            self.totalMipsCode.append(["jr $ra"])
+            self.totalMipsCode.append([f"loop{currentBlock[-1]}end:"])
 
         self.lines = originalLines
+
+
+
+
+    def isVariable(self,term):
+        if term and term[0].isnumeric(): return False
+        elif term.replace('_', '').isalnum(): return True
+        return False
+
+
+    def logicalOperation(self,exp):
+        output = []
+
+        if len(exp) == 3:
+            op, left_exp, right_exp = exp
+            subOutput_1 = self.equality_op(left_exp)
+            subOutput_2 = self.equality_op(right_exp)
+
+            output.extend(subOutput_1)
+            output.extend(subOutput_2)
+
+            output.append(f"{self.bool_map[op]} {self.savedRegs[self.savedIndex]}, {self.savedRegs[self.savedIndex - 1]}, {self.savedRegs[self.savedIndex - 2]}")
+            self.savedIndex += 1
+
+        else:
+            subOutput = self.equality_op(exp[1])
+            output.extend(subOutput)
+
+            output.append(f'{self.bool_map[exp[0]]} {self.savedRegs[self.savedIndex]}, {self.savedRegs[self.savedIndex - 1]}')
+            savedIndex += 1
+
+        return output
+
+
+
+    def equality_op(self,expression):
+        
+        left, right = 0, len(expression) - 1
+        while left < len(expression) and expression[left].isalnum() or expression[left] == '_':  
+            left += 1
+
+        while right > -1 and expression[right].isalnum() or expression[right] == '_':
+            right -= 1
+
+        arg1 = expression[:left]
+        equality_op = expression[left: right + 1]
+        arg2 = expression[right + 1:]
+        
+        output = []
+        
+        if self.isVariable(arg1):
+            output.append(f'lw $t1, {arg1}')
+        elif arg1.isnumeric():
+            output.append(f'addi $t1, $zero, {arg1}') 
+        if arg2.isnumeric():
+            output.append(f'addi $t2, $zero, {arg2}') 
+
+        elif self.isVariable(arg2):
+            output.append(f'lw $t2, {arg2}')
+
+
+        if equality_op in self.set_on_map:
+            output.append(f'{self.set_on_map[equality_op]} {self.savedRegs[self.savedIndex]} $t1, $t2')
+            self.savedIndex += 1
+
+        return output
+            
+
+    def boolHandle(self,exp):
+        exp = exp.replace(' ', '')
+
+        if '&&' in exp:
+            exp = exp.split('&&')
+
+            formal = ['&&']
+            formal.extend(exp)
+
+            return self.logicalOperation(formal)
+        
+        elif '||' in exp:
+            exp = exp.split('||')
+
+            formal = ['||']
+            formal.extend(exp)
+
+            return self.logicalOperation(formal)
+
+        elif exp.startswith('!'):
+            exp = exp.split('(')
+
+            exp[-1] = exp[-1][:-1]
+            return self.logicalOperation(exp)
+
+        else:
+            return self.equality_op(exp)
+        
+
+    def process(self,line):
+        return ["..."],['data']
+
+
+
+    def conditionHandler(self,line,currIndex):
+        self.branch_created.append(True)
+        code = data = []
+
+        if line.startswith('if') or line.startswith('else if'):
+        
+            start = line.find('(')
+            par_stack = ['(']
+            condition = ''
+            i = start + 1
+
+            while i < len(line) and par_stack:
+
+                if line[i] == ')':
+                    par_stack.pop()
+
+                elif line[i] == '(':
+                    par_stack.append('(')
+
+                else:
+                    condition += line[i]
+                
+                i += 1
+
+
+            condition_assembly = self.boolHandle(condition)
+            code = condition_assembly
+
+            code.append(f'bnez {self.savedRegs[self.savedIndex - 1]}, branch{self.branch_num}')
+            
+            ################################################
+            tmpIndex = currIndex
+            stack = None
+            while tmpIndex < len(self.lines):
+
+                tmpLine = self.lines[tmpIndex]
+                for ch in tmpLine:
+                    if ch == "{":
+                        if not stack:
+                            stack = 1
+
+                        else:
+                            stack += 1
+                    
+                    if ch == "}":
+                        stack -= 1
+
+                if stack == 0:
+                    lineEnd = tmpIndex
+                    break
+                tmpIndex += 1
+            
+            startInd = currIndex + 2
+            endInd = lineEnd-1
+            ################################################
+
+            currBranch = f'branch{self.branch_num}'
+            self.branches[currBranch] = (startInd,endInd,currBranch,"mainflow"+str(self.mainflow_num))
+            self.branch_num += 1
+            print(self.branches)
+            return lineEnd,code, data
+        
+        else:
+            tmpIndex = currIndex
+            stack = None
+
+            while tmpIndex < len(self.lines):
+
+                tmpLine = self.lines[tmpIndex]
+                for ch in tmpLine:
+                    if ch == "{":
+                        if not stack:
+                            stack = 1
+
+                        else:
+                            stack += 1
+                    
+                    if ch == "}":
+                        stack -= 1
+
+                if stack == 0:
+                    lineEnd = tmpIndex
+                    break
+                tmpIndex += 1
+            
+            startInd = currIndex + 2
+            endInd = lineEnd-1
+            self.handleBlock(startInd,endInd,"",True,False)
+
+            return lineEnd,code,data
 
 
 
@@ -656,16 +962,10 @@ def main(inputFile,outputFile):
     res = compiler.syntaxCorrect()
 
     if res == True:
-        try:
-            code,data = compiler.compile()
-
-        except:
-            code = False
-            data = "There was an error while compiling"
+        code,data = compiler.compile()
 
         if code == False:
-            print(data)
-            return
+            return data
         
         # Open a file in write mode
         with open(outputFile, 'w') as result:
@@ -682,9 +982,10 @@ def main(inputFile,outputFile):
                     result.write("\t"+line+"\n")
                 result.write("\n")
 
-    else:
-        print(res)
+        return True
 
+    else:
+        return res
 
 ################################# here comes the GUI ########################################################
 
@@ -699,7 +1000,7 @@ class Application(tk.Frame):
         self.master.title("Compiler")
         self.pack(expand=True, fill='both')
         self.create_widgets()
-        self.editor.insert(tk.END, "// Here goes your c++ code...")
+        self.editor.insert(tk.END, "// Here goes your c++ code...\n")
         self.output.insert(tk.END, "### Here goes the Mips Assembly\n")
 
 
@@ -708,37 +1009,47 @@ class Application(tk.Frame):
         editor_frame = tk.Frame(self)
         editor_frame.pack(side='left', expand=True, fill='both')
 
-        self.editor = tk.Text(editor_frame, width=80, height=25, bg='black', fg='white',
-                              insertbackground='white', selectbackground='gray', selectforeground='white',
-                              font=("Consolas", 12))
+        self.linenumbers = tk.Text(editor_frame, width=4, height=25, bg="black", fg="gray", font=("Consolas", 16))
+        self.linenumbers.pack(side='left', fill='y')
+        self.linenumbers.insert('end', '1\n', 'line')
+        self.linenumbers.config(state='disabled')
+        self.editor = tk.Text(editor_frame, width=80, height=25, bg='#010110', fg='white',
+                            insertbackground='white', selectbackground='gray', selectforeground='white',
+                            font=("Consolas", 16))
+                            
         self.editor.pack(side='left', expand=True, fill='both')
         self.editor.tag_configure("line", background="black", foreground='gray')
         self.editor.bind("<Key>", self.update_line_numbers)
         self.scrollbar = tk.Scrollbar(editor_frame, command=self.editor.yview)
         self.scrollbar.pack(side='right', fill='y')
         self.editor.config(yscrollcommand=self.scrollbar.set)
-        self.linenumbers = tk.Text(editor_frame, width=4, height=25, bg="black", fg="gray", font=("Consolas", 12))
-        self.linenumbers.pack(side='left', fill='y')
-        self.linenumbers.insert('end', '1\n', 'line')
-        self.linenumbers.config(state='disabled')
+
 
         # Buttons
         button_frame = tk.Frame(self, bg='black')
         button_frame.pack(side='top', anchor='ne')
 
-        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_editor, bg='red', fg='white')
+        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_editor, bg='red', fg='white',font=("Consolas",14))
         self.clear_button.pack(side='right', padx=5, pady=5)
 
-        self.run_button = tk.Button(button_frame, text="Run", command=self.run_compiler, bg='blue', fg='white')
+        self.run_button = tk.Button(button_frame, text="Run", command=self.run_compiler, bg='blue', fg='white',font=("Consolas",14))
         self.run_button.pack(side='right', padx=5, pady=5)
 
+        self.copy_button = tk.Button(button_frame, text="Copy", command=self.copy_output, bg='green', fg='white',font=("Consolas",14))
+        self.copy_button.pack(side='right', padx=5, pady=5)
+
         # Output area
-        self.output = tk.Text(self, width=80, height=20, bg='black', fg='white', insertbackground='white',
-                              font=("Consolas", 12))
+        self.output = tk.Text(self, width=80, height=50, bg='black', fg='white', insertbackground='white',
+                            font=("Consolas", 16))
         self.output.pack(side='bottom', fill='x')
 
         # Set the remaining space to be black
         self.config(bg='black')
+
+    def copy_output(self):
+        self.master.clipboard_clear()
+        self.master.clipboard_append(self.output.get("1.0", "end"))
+
 
     def update_line_numbers(self, event):
         self.linenumbers.config(state='normal')
@@ -758,12 +1069,17 @@ class Application(tk.Frame):
         self.output.delete(1.0, tk.END)
         
         #then we do the compiling
-        main('input.txt','output.txt')
+        result = main('input.txt','output.txt')
+        if result == True:
+            #and finally we out put the mips code 
+            with open('output.txt', 'r') as result:
+                for line in result:
+                    self.output.insert(tk.END, line)
 
-        #and finally we out put the mips code 
-        with open('output.txt', 'r') as result:
-            for line in result:
-                self.output.insert(tk.END, line)
+        else:
+            self.output.insert(tk.END,result)
+
+        
 
         
 
@@ -781,3 +1097,48 @@ root.configure(bg='black')
 app = Application(master=root)
 app.mainloop()
 
+
+
+#template for trying
+
+# int a = 5;
+# string name;
+# name = "shamil bedru";
+# int age = 20;
+
+# for(int i = 0; i < 30; i += 5)
+# {
+# cout << "It works....";
+# }
+
+# cout << "my name is: ";
+# cout << name;
+# cout << "age is: ";
+# cout << age;
+
+# cout << "enter ur first number";
+# int a;
+# cin >> a;
+# cout << "enter ur second number";
+# int >> b;
+# cin >> b;
+
+# cout << "their sum is: ";
+# int c = a + b;
+# cout << c;
+
+# cout << "their difference is: ";
+# int d = a - b;
+# cout << d;
+
+# cout << "their product is: ";
+# int e = a * b;
+# cout << e;
+
+# cout << "their division is: ";
+# int f = a / b;
+# cout << f;
+
+# cout << "their modulo is: ";
+# int g = a % b;
+# cout << g;
