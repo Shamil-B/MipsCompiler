@@ -1,7 +1,41 @@
-// Here goes your c++ code...
+int a = 5;
+string name;
+name = "shamil bedru";
+int age = 20;
 
-faskfjkanfnkm.d,mf,f
-sfsmf
-msnfn
-ndsmfn
+for(int i = 0; i < 30; i += 5)
+{
+cout << "It works....";
+}
 
+cout << "my name is: ";
+cout << name;
+cout << "age is: ";
+cout << age;
+
+cout << "enter ur first number";
+int a;
+cin >> a;
+cout << "enter ur second number";
+int >> b;
+cin >> b;
+
+cout << "their sum is: ";
+int c = a + b;
+cout << c;
+
+cout << "their difference is: ";
+int d = a - b;
+cout << d;
+
+cout << "their product is: ";
+int e = a * b;
+cout << e;
+
+cout << "their division is: ";
+int f = a / b;
+cout << f;
+
+cout << "their modulo is: ";
+int g = a % b;
+cout << g;

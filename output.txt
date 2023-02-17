@@ -3,8 +3,16 @@
 
 	main:
 
-	
+	li $v0,4
+	la $a0 var0
+	syscall
+
+	li $v0,4
+	la $a0,newLine
+	syscall
 
 .data 
 	newLine: .asciiz "\n"
+
+	var0: .asciiz "biruk is a failed man"
 

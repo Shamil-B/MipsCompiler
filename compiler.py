@@ -335,7 +335,7 @@ class Compiler():
                 self.totalMipsData.append(data)
 
 
-            elif line == "" or line.startswith("namespace") or line.startswith("include"):
+            elif line == "" or line.startswith("namespace") or line.startswith("#include"):
                 pass
                             
             else:
@@ -427,13 +427,17 @@ class Compiler():
 
                     else:
                         return False, f"Unknown variable {items[0]} on line number {self.lines.index(line)}"
+                    
 
-                # else:
-                #     if line in self.lines:
-                #         return False,"Syntax error on line " + str(self.lines.index(line)+1)
+                elif line.startswith("{") or line.startswith("}"):
+                    pass
 
-                #     else:
-                #         return False, "Syntax error"
+                else:
+                    if line in self.lines:
+                        return False,"Syntax error on line " + str(self.lines.index(line)+1)
+
+                    else:
+                        return False, "Syntax error"
 
             index += 1
 
@@ -1000,8 +1004,8 @@ class Application(tk.Frame):
         self.master.title("Compiler")
         self.pack(expand=True, fill='both')
         self.create_widgets()
-        self.editor.insert(tk.END, "// Here goes your c++ code...\n")
-        self.output.insert(tk.END, "### Here goes the Mips Assembly\n")
+        self.editor.insert(tk.END, "//=============== C++ code ===============\n")
+        self.output.insert(tk.END, "#=============== Mips Assembly ===============\n")
 
 
     def create_widgets(self):
@@ -1009,42 +1013,51 @@ class Application(tk.Frame):
         editor_frame = tk.Frame(self)
         editor_frame.pack(side='left', expand=True, fill='both')
 
-        self.linenumbers = tk.Text(editor_frame, width=4, height=25, bg="black", fg="gray", font=("Consolas", 16))
+        self.linenumbers = tk.Text(editor_frame, width=2, height=25, bg="#060e20", fg="gray", font=("Consolas", 12), padx=10, pady=7, border=0)
         self.linenumbers.pack(side='left', fill='y')
         self.linenumbers.insert('end', '1\n', 'line')
-        self.linenumbers.config(state='disabled')
-        self.editor = tk.Text(editor_frame, width=80, height=25, bg='#010110', fg='white',
+        self.linenumbers.config(state='disabled')#070e21
+        self.editor = tk.Text(editor_frame, width=80, height=25, bg='#161e30', fg='#ffffff',
                             insertbackground='white', selectbackground='gray', selectforeground='white',
-                            font=("Consolas", 16))
+                            font=("Consolas", 12), border=0, padx=7, pady=7)
                             
         self.editor.pack(side='left', expand=True, fill='both')
         self.editor.tag_configure("line", background="black", foreground='gray')
         self.editor.bind("<Key>", self.update_line_numbers)
-        self.scrollbar = tk.Scrollbar(editor_frame, command=self.editor.yview)
+        self.scrollbar = tk.Scrollbar(editor_frame, command=self.editor.yview, border=0 , width=10)
         self.scrollbar.pack(side='right', fill='y')
+    
         self.editor.config(yscrollcommand=self.scrollbar.set)
 
 
         # Buttons
-        button_frame = tk.Frame(self, bg='black')
+        button_frame = tk.Frame(self, bg='#161e30', border=0)
         button_frame.pack(side='top', anchor='ne')
 
-        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_editor, bg='red', fg='white',font=("Consolas",14))
+        self.open_button = tk.Button(button_frame, text="Open", command=self.open_file, bg="#408560", fg="#FFFFFF",font=("Consolas",12), border=0)
+        self.open_button.pack(side=tk.LEFT, padx=5)
+
+        self.save_button = tk.Button(button_frame, text="Save", command=self.save_file, bg="#408560", fg="#FFFFFF",font=("Consolas",12), border=0)
+        self.save_button.pack(side=tk.LEFT, padx=5)
+
+        self.clear_button = tk.Button(button_frame, text="Clear", command=self.clear_editor, bg='gray', fg='white',font=("Consolas",13), border=0)
         self.clear_button.pack(side='right', padx=5, pady=5)
 
-        self.run_button = tk.Button(button_frame, text="Run", command=self.run_compiler, bg='blue', fg='white',font=("Consolas",14))
+        self.run_button = tk.Button(button_frame, text="Compile", command=self.run_compiler, bg='#43bb57', fg='white',font=("Consolas",13), border=0)
         self.run_button.pack(side='right', padx=5, pady=5)
 
-        self.copy_button = tk.Button(button_frame, text="Copy", command=self.copy_output, bg='green', fg='white',font=("Consolas",14))
-        self.copy_button.pack(side='right', padx=5, pady=5)
+        self.copy_button = tk.Button(button_frame, text="Copy", command=self.copy_output, bg='#435799', fg='white',font=("Consolas",11), border=0)
+        self.copy_button.pack(side=tk.LEFT, padx=20, pady=1)
 
         # Output area
-        self.output = tk.Text(self, width=80, height=50, bg='black', fg='white', insertbackground='white',
-                            font=("Consolas", 16))
+        self.output = tk.Text(self, width=80, height=50, bg='#030715', fg='white', insertbackground='white',
+                            font=("Consolas", 12), border=0, padx=10, pady=10)
         self.output.pack(side='bottom', fill='x')
 
         # Set the remaining space to be black
-        self.config(bg='black')
+        self.config(bg='#161e30')
+
+        
 
     def copy_output(self):
         self.master.clipboard_clear()
@@ -1091,54 +1104,23 @@ class Application(tk.Frame):
         self.linenumbers.insert('end', '1\n', 'line')
         self.linenumbers.config(state='disabled')
 
+    def open_file(self):
+        file_path = filedialog.askopenfilename(title="Open File", filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
+        if file_path:
+            self.editor.delete("1.0", tk.END)
+            with open(file_path, "r") as f:
+                text = f.read()
+                self.editor.insert("1.0", text)
+
+    def save_file(self):
+        file_path = filedialog.asksaveasfilename(title="Save File", filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
+        if file_path:
+            with open(file_path, "w") as f:
+                text = self.editor.get("1.0", tk.END)
+                f.write(text)
+
 
 root = tk.Tk()
 root.configure(bg='black')
 app = Application(master=root)
 app.mainloop()
-
-
-
-#template for trying
-
-# int a = 5;
-# string name;
-# name = "shamil bedru";
-# int age = 20;
-
-# for(int i = 0; i < 30; i += 5)
-# {
-# cout << "It works....";
-# }
-
-# cout << "my name is: ";
-# cout << name;
-# cout << "age is: ";
-# cout << age;
-
-# cout << "enter ur first number";
-# int a;
-# cin >> a;
-# cout << "enter ur second number";
-# int >> b;
-# cin >> b;
-
-# cout << "their sum is: ";
-# int c = a + b;
-# cout << c;
-
-# cout << "their difference is: ";
-# int d = a - b;
-# cout << d;
-
-# cout << "their product is: ";
-# int e = a * b;
-# cout << e;
-
-# cout << "their division is: ";
-# int f = a / b;
-# cout << f;
-
-# cout << "their modulo is: ";
-# int g = a % b;
-# cout << g;
